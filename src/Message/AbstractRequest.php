@@ -31,12 +31,12 @@ abstract class AbstractRequest extends OmnipayAbstractRequest
         return $this->setParameter('clientSecret', $value);
     }
 
-    public function getToken(): ?string
+    public function getToken()
     {
         return $this->getParameter('token');
     }
 
-    public function setToken(string $value): self
+    public function setToken($value)
     {
         return $this->setParameter('token', $value);
     }
