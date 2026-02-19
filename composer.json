@@ -1,0 +1,39 @@
+{
+    "name": "smartsmith/omnipay-paypal-v2",
+    "description": "PayPal Orders v2 API driver for Omnipay",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "paypal",
+        "omnipay",
+        "payment",
+        "gateway",
+        "orders-v2"
+    ],
+    "homepage": "https://github.com/SmartSmith/omnipay-paypal-v2",
+    "require": {
+        "php": "^8.2",
+        "omnipay/common": "^3.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "omnipay/tests": "^4.0",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Omnipay\\PayPalV2\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Omnipay\\PayPalV2\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
