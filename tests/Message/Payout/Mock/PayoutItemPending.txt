@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+    "payout_item_id": "ITEM_PAY_001",
+    "transaction_status": "PENDING",
+    "payout_batch_id": "BATCH_PAY_001",
+    "payout_item": {
+        "recipient_type": "EMAIL",
+        "amount": {
+            "currency": "USD",
+            "value": "250.00"
+        },
+        "receiver": "mentor@example.com",
+        "sender_item_id": "TXN_PAY_202602_001"
+    }
+}

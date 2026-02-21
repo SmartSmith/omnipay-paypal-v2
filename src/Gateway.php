@@ -3,8 +3,10 @@
 namespace Omnipay\PayPalV2;
 
 use Omnipay\Common\AbstractGateway;
-use Omnipay\PayPalV2\Message\PurchaseRequest;
 use Omnipay\PayPalV2\Message\CompletePurchaseRequest;
+use Omnipay\PayPalV2\Message\Payout\PayoutRequest;
+use Omnipay\PayPalV2\Message\Payout\PayoutStatusRequest;
+use Omnipay\PayPalV2\Message\PurchaseRequest;
 use Omnipay\PayPalV2\Message\TokenRequest;
 
 class Gateway extends AbstractGateway
@@ -108,6 +110,18 @@ class Gateway extends AbstractGateway
     public function completePurchase(array $parameters = []): CompletePurchaseRequest
     {
         return $this->createRequest(CompletePurchaseRequest::class, $parameters);
+    }
+
+    // -- Payout operations --
+
+    public function payout(array $parameters = []): PayoutRequest
+    {
+        return $this->createRequest(PayoutRequest::class, $parameters);
+    }
+
+    public function payoutStatus(array $parameters = []): PayoutStatusRequest
+    {
+        return $this->createRequest(PayoutStatusRequest::class, $parameters);
     }
 
     /**

@@ -1,0 +1,21 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+    "payout_item_id": "ITEM_PAY_002",
+    "transaction_status": "FAILED",
+    "payout_batch_id": "BATCH_PAY_001",
+    "payout_item": {
+        "recipient_type": "EMAIL",
+        "amount": {
+            "currency": "USD",
+            "value": "250.00"
+        },
+        "receiver": "invalid@example.com",
+        "sender_item_id": "TXN_PAY_202602_002"
+    },
+    "errors": {
+        "name": "RECEIVER_UNREGISTERED",
+        "message": "Receiver is unregistered"
+    }
+}
