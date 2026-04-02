@@ -1,0 +1,13 @@
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/json
+
+{
+  "name": "UNPROCESSABLE_ENTITY",
+  "message": "The requested action could not be performed.",
+  "details": [
+    {
+      "issue": "ORDER_NOT_APPROVED",
+      "description": "Payer has not yet approved the Order for payment."
+    }
+  ]
+}

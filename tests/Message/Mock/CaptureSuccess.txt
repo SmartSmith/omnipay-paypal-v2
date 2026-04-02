@@ -1,0 +1,30 @@
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+  "id": "5O190127TN364715T",
+  "status": "COMPLETED",
+  "payment_source": {
+    "paypal": {
+      "email_address": "buyer@example.com",
+      "account_id": "PAYER123"
+    }
+  },
+  "purchase_units": [
+    {
+      "reference_id": "TXN_001",
+      "payments": {
+        "captures": [
+          {
+            "id": "CAP_87654321",
+            "status": "COMPLETED",
+            "amount": {
+              "currency_code": "USD",
+              "value": "100.00"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
