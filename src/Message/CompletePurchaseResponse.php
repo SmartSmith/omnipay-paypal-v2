@@ -18,7 +18,7 @@ class CompletePurchaseResponse extends AbstractResponse
 
     public function getTransactionReference(): ?string
     {
-        // Return the capture ID — this is the actual payment reference for refunds etc.
+        // Return the capture ID - this is the actual payment reference for refunds etc.
         $units = $this->data['purchase_units'] ?? [];
         $captures = $units[0]['payments']['captures'] ?? [];
 

@@ -50,7 +50,7 @@ class Gateway extends AbstractGateway
     }
 
     /**
-     * Alias for setClientSecret() — backwards compatibility with configs that store 'secret'.
+     * Alias for setClientSecret() - backwards compatibility with configs that store 'secret'.
      */
     public function setSecret(string $value): self
     {
