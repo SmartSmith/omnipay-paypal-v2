@@ -1,0 +1,20 @@
+HTTP/1.1 201 Created
+Content-Type: application/json
+
+{
+    "batch_header": {
+        "payout_batch_id": "BATCH_PAY_001",
+        "batch_status": "PENDING",
+        "sender_batch_header": {
+            "sender_batch_id": "TXN_PAY_202602_001",
+            "email_subject": "You have a payment"
+        }
+    },
+    "links": [
+        {
+            "href": "https://api-m.sandbox.paypal.com/v1/payments/payouts/BATCH_PAY_001",
+            "rel": "self",
+            "method": "GET"
+        }
+    ]
+}

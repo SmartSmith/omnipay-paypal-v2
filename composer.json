@@ -18,7 +18,9 @@
     "require-dev": {
         "phpunit/phpunit": "^11.0",
         "omnipay/tests": "^4.0",
-        "mockery/mockery": "^1.6"
+        "mockery/mockery": "^1.6",
+        "laravel/pint": "^1.27",
+        "smartsmith/php-standards": "dev-main"
     },
     "autoload": {
         "psr-4": {
@@ -31,9 +33,34 @@
         }
     },
     "scripts": {
-        "test": "phpunit"
+        "post-install-cmd": [
+            "git config core.hooksPath .githooks"
+        ],
+        "post-update-cmd": [
+            "git config core.hooksPath .githooks"
+        ],
+        "test": "phpunit",
+        "test:endpoints": "phpunit --testsuite Endpoints",
+        "test:changed": [
+            "Composer\\Config::disableProcessTimeout",
+            "vendor/smartsmith/php-standards/bin/test-changed"
+        ],
+        "check:static": [
+            "vendor/smartsmith/php-standards/bin/check-topic --base origin/main --without lint --without phpstan"
+        ],
+        "check:topic": [
+            "vendor/smartsmith/php-standards/bin/check-topic --base origin/main --without lint --without phpstan",
+            "@test:hook"
+        ],
+        "test:hook": "sh .githooks/test-pre-push"
     },
     "config": {
         "sort-packages": true
+    },
+    "repositories": {
+        "php-standards": {
+            "type": "vcs",
+            "url": "https://github.com/SmartSmith/php-standards.git"
+        }
     }
 }

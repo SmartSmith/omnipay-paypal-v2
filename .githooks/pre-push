@@ -1,0 +1,60 @@
+#!/bin/sh
+# Standards gate, run locally before a push leaves this machine (PHSTD-361).
+#
+# Tiers. git hands the hook one line per pushed ref on stdin:
+# <local ref> <local sha> <remote ref> <remote sha>. A push naming main is a landing: the static
+# checks (composer check:static, Pint over the change), then php-standards' test-changed from the
+# remote's old sha (the merge-base with origin/main for a branch new there). Any other push is a
+# topic push and runs composer check:topic: Pint over the change and the hook's self-test, and no
+# test of the package. BANALO_FULL_CHECK=1 makes any push take the landing tier against origin/main.
+# Every pushed ref chooses; the strongest tier runs once.
+# Tests: .githooks/test-pre-push (composer test:hook).
+set -eu
+die() { echo "pre-push: $*; push refused" >&2; exit 2; }
+cd "$(git rev-parse --show-toplevel)"
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+checker=vendor/smartsmith/php-standards/bin/check-once
+[ -x "$checker" ] || die "$checker is missing; run composer update smartsmith/php-standards first"
+zero=0000000000000000000000000000000000000000
+full=0
+seen=0
+land_base=''
+checked_revision=''
+if [ "${BANALO_FULL_CHECK+x}" = x ]; then
+    case "$BANALO_FULL_CHECK" in 1) full=1 ;; 0) ;; *) die 'BANALO_FULL_CHECK must be 0 or 1' ;; esac
+fi
+# The old names fail loud rather than quietly running the topic tier.
+[ "${MADEPIECE_FULL_CHECK+x}" != x ] || die 'MADEPIECE_FULL_CHECK is now BANALO_FULL_CHECK'
+[ "${KEEL_FULL_CHECK+x}" != x ] || die 'KEEL_FULL_CHECK is now BANALO_FULL_CHECK'
+while read -r local_ref revision remote_ref base; do
+    # A deleted ref pushes nothing to check.
+    [ "$revision" != "$zero" ] || continue
+    seen=1
+    [ "$(git rev-parse "$revision^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ] || die "check out $local_ref before pushing"
+    if [ "$remote_ref" = refs/heads/main ]; then
+        full=1
+        if [ "$base" = "$zero" ]; then
+            base=$(git merge-base "$revision" refs/remotes/origin/main) || die 'cannot resolve branch base'
+        fi
+        land_base=$base
+    fi
+    checked_revision=$revision
+done
+[ "$seen" = 1 ] || exit 0
+export CHECK_ONCE_REV="$checked_revision"
+if [ "$full" = 1 ]; then
+    # The owner's ruling of 24 Oct 2026: "only for functionality that an ai agent work on, the related
+    # tests run along with end to end tests. Nothing else. So even that should take overall less than a
+    # minute". A landing runs the static checks, then the change's related tests and the end-to-end
+    # suite (composer test:endpoints); `composer test`, the whole old suite, runs only in the nightly
+    # report, never on a push.
+    tester=vendor/smartsmith/php-standards/bin/test-changed
+    [ -x "$tester" ] || die "$tester is missing; run composer update smartsmith/php-standards first"
+    if [ -z "$land_base" ]; then
+        land_base=$(git merge-base "$checked_revision" refs/remotes/origin/main) || die 'cannot resolve branch base'
+    fi
+    "$checker" fast -- composer check:static
+    "$tester" --base "$land_base"
+else
+    "$checker" fast -- composer check:topic
+fi

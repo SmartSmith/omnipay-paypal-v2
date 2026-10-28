@@ -1,0 +1,208 @@
+#!/bin/sh
+# Tests for .githooks/pre-push's tiers (PHSTD-361). A scratch repository holds stubs of check-once,
+# test-changed and composer that record what the hook runs, so no check runs. Run it whole:
+# composer test:hook. PHSTD_HOOK_UNDER_TEST names another hook to hold to the same cases (an empty
+# one stands for the repository before PHSTD-361, which had no hook, to watch the landing cases go
+# red).
+set -eu
+unset CHECK_ONCE_REV GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR BANALO_FULL_CHECK MADEPIECE_FULL_CHECK KEEL_FULL_CHECK
+root=$(cd "$(dirname "$0")/.." && pwd)
+if [ "${PHSTD_HOOK_UNDER_TEST+x}" = x ]; then hook=$PHSTD_HOOK_UNDER_TEST; else hook="$root/.githooks/pre-push"; fi
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/stubs" "$tmp/repo/vendor/smartsmith/php-standards/bin"
+cat > "$tmp/stubs/composer" <<'STUB'
+#!/bin/sh
+printf 'composer %s\n' "$*" >> "$PROOF_COMMANDS"
+[ "${COMPOSER_FAILS:-}" != "$*" ]
+STUB
+# check-once records its tier and runs the command after --, as the real one does on a first run.
+cat > "$tmp/stubs/check-once" <<'STUB'
+#!/bin/sh
+printf 'check-once %s\n' "$1" >> "$PROOF_COMMANDS"
+shift 2
+exec "$@"
+STUB
+cat > "$tmp/stubs/test-changed" <<'STUB'
+#!/bin/sh
+printf 'test-changed %s\n' "$*" >> "$PROOF_COMMANDS"
+[ "${RELATED_TESTS_FAIL+x}" != x ]
+STUB
+chmod +x "$tmp/stubs/"*
+bin="$tmp/repo/vendor/smartsmith/php-standards/bin"
+cp "$tmp/stubs/check-once" "$tmp/stubs/test-changed" "$bin/"
+export PATH="$tmp/stubs:$PATH" PROOF_COMMANDS="$tmp/commands"
+cd "$tmp/repo"
+git init -q
+printf 'vendor/\n' > .gitignore
+printf base > source.txt
+commit() { git add "$@"; git -c user.name=Test -c user.email=test@example.com commit -qm change; }
+commit .gitignore source.txt
+base=$(git rev-parse HEAD)
+git update-ref refs/remotes/origin/main "$base"
+echo changed >> source.txt
+commit source.txt
+old=$(git rev-parse HEAD)
+echo again >> source.txt
+commit source.txt
+sha=$(git rev-parse HEAD)
+zero=0000000000000000000000000000000000000000
+failures=0
+pass() { echo "ok - $1"; }
+fail() { echo "not ok - $1: $2"; failures=$((failures + 1)); }
+
+# run <stdin file> [VAR=value...]: run the hook as git does, setting status and calls.
+run() {
+    input=$1
+    shift
+    : > "$PROOF_COMMANDS"
+    status=0
+    env "$@" "$hook" origin git@example.invalid:x.git < "$input" > "$tmp/out" 2>&1 || status=$?
+    calls=$(cat "$PROOF_COMMANDS")
+}
+
+# expect <name> <stdin file> <commands> [VAR=value...]: the hook passes, having run exactly <commands>.
+expect() {
+    name=$1
+    input=$2
+    want=$3
+    shift 3
+    run "$input" "$@"
+    if [ "$status" != 0 ]; then
+        fail "$name" "the hook exited $status: $(cat "$tmp/out")"
+    elif [ "$calls" != "$want" ]; then
+        fail "$name" "the hook ran '$calls', expected '$want'"
+    else
+        pass "$name"
+    fi
+}
+
+# refuses <name> <stdin file> <status> <message> <commands> [VAR=value...]: the hook exits <status>,
+# saying <message> (when one is given), having run exactly <commands>.
+refuses() {
+    name=$1
+    input=$2
+    want_status=$3
+    message=$4
+    want=$5
+    shift 5
+    run "$input" "$@"
+    if [ "$status" != "$want_status" ]; then
+        fail "$name" "the hook exited $status, expected $want_status: $(cat "$tmp/out")"
+    elif [ -n "$message" ] && ! grep -qF -- "$message" "$tmp/out"; then
+        fail "$name" "the hook did not say '$message': $(cat "$tmp/out")"
+    elif [ "$calls" != "$want" ]; then
+        fail "$name" "the hook ran '$calls', expected '$want'"
+    else
+        pass "$name"
+    fi
+}
+
+topic="check-once fast
+composer check:topic"
+# landing <base>: what a landing runs, the static checks then the related and end-to-end tests.
+landing() {
+    printf 'check-once fast\ncomposer check:static\ntest-changed --base %s' "$1"
+}
+
+printf 'refs/heads/x %s refs/heads/phstd/361-topic %s\n' "$sha" "$old" > "$tmp/topic"
+expect 'a topic push runs check:topic and no test' "$tmp/topic" "$topic"
+
+printf 'refs/heads/x %s refs/heads/phstd/361-topic %s\n' "$sha" "$zero" > "$tmp/new-topic"
+expect 'a new topic branch runs check:topic and no test' "$tmp/new-topic" "$topic"
+
+printf 'refs/heads/x %s refs/heads/maintenance %s\n' "$sha" "$zero" > "$tmp/prefix"
+expect 'a branch merely starting with main is a topic push' "$tmp/prefix" "$topic"
+
+printf 'refs/heads/x %s refs/heads/main %s\n' "$sha" "$old" > "$tmp/main"
+expect 'a main push runs check:static then test-changed from the remote old sha' "$tmp/main" "$(landing "$old")"
+
+printf 'refs/heads/x %s refs/heads/test %s\n' "$sha" "$old" > "$tmp/test"
+expect 'a test push is a topic push: main is the only target' "$tmp/test" "$topic"
+
+printf 'refs/heads/x %s refs/heads/main %s\n' "$sha" "$zero" > "$tmp/new-main"
+expect 'a landing new on the remote measures from the merge-base with origin/main' "$tmp/new-main" "$(landing "$base")"
+
+printf 'refs/heads/x %s refs/heads/phstd/361-topic %s\nrefs/heads/y %s refs/heads/main %s\n' "$sha" "$zero" "$sha" "$old" > "$tmp/mixed"
+expect 'a topic branch and main in one push run the landing once' "$tmp/mixed" "$(landing "$old")"
+
+printf 'refs/heads/y %s refs/heads/main %s\nrefs/heads/x %s refs/heads/phstd/361-topic %s\n' "$sha" "$old" "$sha" "$zero" > "$tmp/mixed-main-first"
+expect 'main and a topic branch in one push run the landing once' "$tmp/mixed-main-first" "$(landing "$old")"
+
+expect 'BANALO_FULL_CHECK=1 on a topic push takes the landing tier against origin/main' "$tmp/topic" "$(landing "$base")" BANALO_FULL_CHECK=1
+expect 'BANALO_FULL_CHECK=0 on a topic push stays a topic push' "$tmp/topic" "$topic" BANALO_FULL_CHECK=0
+refuses 'BANALO_FULL_CHECK other than 0 or 1 refuses' "$tmp/topic" 2 'BANALO_FULL_CHECK must be 0 or 1' '' BANALO_FULL_CHECK=yes
+refuses 'MADEPIECE_FULL_CHECK refuses, naming the new name' "$tmp/topic" 2 'MADEPIECE_FULL_CHECK is now BANALO_FULL_CHECK' '' MADEPIECE_FULL_CHECK=1
+refuses 'KEEL_FULL_CHECK refuses, naming the new name' "$tmp/topic" 2 'KEEL_FULL_CHECK is now BANALO_FULL_CHECK' '' KEEL_FULL_CHECK=1
+
+printf 'refs/heads/x %s refs/heads/phstd/361-topic %s\n' "$zero" "$old" > "$tmp/delete"
+expect 'a deleted ref runs nothing' "$tmp/delete" ''
+
+: > "$tmp/empty"
+expect 'a push with no ref runs nothing' "$tmp/empty" ''
+
+printf 'refs/heads/x %s refs/heads/main %s\n' "$old" "$base" > "$tmp/elsewhere"
+refuses 'a pushed tree that is not the checked-out tree refuses' "$tmp/elsewhere" 2 'check out refs/heads/x before pushing' ''
+
+refuses 'a red check:topic refuses the push' "$tmp/topic" 1 '' "$topic" COMPOSER_FAILS=check:topic
+refuses 'a red check:static refuses the landing before any test' "$tmp/main" 1 '' 'check-once fast
+composer check:static' COMPOSER_FAILS=check:static
+refuses 'a red related or end-to-end test refuses the landing' "$tmp/main" 1 '' "$(landing "$old")" RELATED_TESTS_FAIL=1
+
+mv "$bin/test-changed" "$tmp/test-changed.away"
+refuses 'a landing with no test-changed refuses' "$tmp/main" 2 'test-changed is missing; run composer update smartsmith/php-standards first' ''
+mv "$tmp/test-changed.away" "$bin/test-changed"
+
+mv "$bin/check-once" "$tmp/check-once.away"
+refuses 'a push with no check-once refuses' "$tmp/topic" 2 'check-once is missing; run composer update smartsmith/php-standards first' ''
+mv "$tmp/check-once.away" "$bin/check-once"
+
+# The scripts the tiers run: check:static is Pint over the change and no test (the package has no
+# static tool of its own), check:topic is the same then the hook's self-test, test still runs the
+# whole suite for the nightly report, test:endpoints runs the Endpoints suite, test:changed runs
+# test-changed, and both composer install and update set the hooks path.
+scripts=$(php -r '
+    $scripts = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["scripts"];
+    $wrong = [];
+    $suite = "/phpunit|paratest|pest|--testsuite|testbench|artisan test/";
+    $pint = "vendor/smartsmith/php-standards/bin/check-topic --base origin/main --without lint --without phpstan";
+    $static = (array) ($scripts["check:static"] ?? throw new RuntimeException("composer.json has no check:static"));
+    if ($static !== [$pint]) { $wrong[] = "check:static is not Pint over the change"; }
+    $topic = (array) ($scripts["check:topic"] ?? throw new RuntimeException("composer.json has no check:topic"));
+    if ($topic !== [$pint, "@test:hook"]) { $wrong[] = "check:topic is not Pint over the change then @test:hook"; }
+    if (preg_match($suite, implode("\n", [...$static, ...$topic])) === 1) { $wrong[] = "check:static or check:topic runs a test suite"; }
+    if (preg_match($suite, implode("\n", (array) ($scripts["test"] ?? []))) !== 1) { $wrong[] = "test no longer runs the suite for the nightly report"; }
+    if (! str_contains(implode("\n", (array) ($scripts["test:endpoints"] ?? [])), "phpunit --testsuite Endpoints")) { $wrong[] = "test:endpoints does not run the Endpoints suite"; }
+    if (! str_contains(implode("\n", (array) ($scripts["test:changed"] ?? [])), "vendor/smartsmith/php-standards/bin/test-changed")) { $wrong[] = "test:changed does not run test-changed"; }
+    if (($scripts["test:hook"] ?? null) !== "sh .githooks/test-pre-push") { $wrong[] = "test:hook does not run .githooks/test-pre-push"; }
+    foreach (["post-install-cmd", "post-update-cmd"] as $event) {
+        if (! in_array("git config core.hooksPath .githooks", (array) ($scripts[$event] ?? []), true)) { $wrong[] = $event." does not set core.hooksPath"; }
+    }
+    echo implode("; ", $wrong);
+' "$root/composer.json" 2>&1) || scripts="composer.json could not be read: $scripts"
+if [ -z "$scripts" ]; then pass 'the composer scripts hold the tiers'; else fail 'the composer scripts hold the tiers' "$scripts"; fi
+
+# The end-to-end set is its own suite, and the old suite leaves it out, so it runs once.
+suites=$(php -r '
+    $xml = simplexml_load_file($argv[1]) ?: throw new RuntimeException("phpunit.xml could not be read");
+    $wrong = [];
+    $endpoints = $xml->xpath("/phpunit/testsuites/testsuite[@name=\"Endpoints\"]");
+    if (count($endpoints) !== 1 || (string) $endpoints[0]->directory !== "tests/Endpoints") { $wrong[] = "no Endpoints suite over tests/Endpoints"; }
+    foreach ($xml->xpath("/phpunit/testsuites/testsuite[@name!=\"Endpoints\"]") as $old) {
+        if ((string) $old->directory === "tests" && (string) $old->exclude !== "tests/Endpoints") { $wrong[] = "the ".$old["name"]." suite runs tests/Endpoints too"; }
+    }
+    echo implode("; ", $wrong);
+' "$root/phpunit.xml" 2>&1) || suites="phpunit.xml could not be read: $suites"
+if [ -z "$suites" ]; then pass 'phpunit.xml has the Endpoints suite, run once'; else fail 'phpunit.xml has the Endpoints suite, run once' "$suites"; fi
+
+if [ "$(php -r 'echo json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR)["preset"];' "$root/pint.json" 2>&1)" = laravel ]; then
+    pass 'pint.json holds the laravel preset'
+else
+    fail 'pint.json holds the laravel preset' "$root/pint.json is missing or names another preset"
+fi
+
+if [ "$failures" != 0 ]; then
+    echo "test-pre-push: $failures failed" >&2
+    exit 1
+fi
+echo 'test-pre-push: all green'

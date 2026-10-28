@@ -7,6 +7,10 @@
     <testsuites>
         <testsuite name="default">
             <directory>tests</directory>
+            <exclude>tests/Endpoints</exclude>
+        </testsuite>
+        <testsuite name="Endpoints">
+            <directory>tests/Endpoints</directory>
         </testsuite>
     </testsuites>
 </phpunit>
