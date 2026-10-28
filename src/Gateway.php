@@ -3,6 +3,7 @@
 namespace Omnipay\PayPalV2;
 
 use Omnipay\Common\AbstractGateway;
+use Omnipay\Common\Exception\InvalidRequestException;
 use Omnipay\PayPalV2\Message\CompletePurchaseRequest;
 use Omnipay\PayPalV2\Message\Payout\PayoutRequest;
 use Omnipay\PayPalV2\Message\Payout\PayoutStatusRequest;
@@ -61,7 +62,7 @@ class Gateway extends AbstractGateway
 
     public function getToken(bool $createIfNeeded = true): string
     {
-        if ($createIfNeeded && !$this->hasToken()) {
+        if ($createIfNeeded && ! $this->hasToken()) {
             $response = $this->createToken()->send();
             if ($response->isSuccessful()) {
                 $this->setToken($response->getToken());
@@ -92,7 +93,7 @@ class Gateway extends AbstractGateway
         $token = $this->getParameter('token');
         $expires = $this->getTokenExpires();
 
-        return !empty($token) && time() < $expires;
+        return ! empty($token) && time() < $expires;
     }
 
     public function createToken(): TokenRequest
@@ -107,8 +108,25 @@ class Gateway extends AbstractGateway
         return $this->createRequest(PurchaseRequest::class, $parameters);
     }
 
+    /**
+     * PayPal returns the buyer with ?token=<order id>, and an app passes that query string here as
+     * it stands. Left as `token` it would replace the gateway's OAuth token, so the capture would
+     * carry the order id as its bearer: it is taken as the order reference instead.
+     */
     public function completePurchase(array $parameters = []): CompletePurchaseRequest
     {
+        if (array_key_exists('token', $parameters)) {
+            $orderId = $parameters['token'];
+            unset($parameters['token']);
+            if (! isset($parameters['transactionReference'])) {
+                $parameters['transactionReference'] = $orderId;
+            } elseif ($parameters['transactionReference'] !== $orderId) {
+                throw new InvalidRequestException(
+                    "PayPal returned the buyer for order {$orderId}, but transactionReference names order {$parameters['transactionReference']}"
+                );
+            }
+        }
+
         return $this->createRequest(CompletePurchaseRequest::class, $parameters);
     }
 
@@ -129,7 +147,7 @@ class Gateway extends AbstractGateway
      */
     public function createRequest($class, array $parameters = [])
     {
-        if (!$this->hasToken() && $class !== TokenRequest::class) {
+        if (! $this->hasToken() && $class !== TokenRequest::class) {
             $this->getToken(true);
         }
 
