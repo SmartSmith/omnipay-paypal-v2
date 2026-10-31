@@ -30,31 +30,45 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('ORDER_123', $data['order_id']);
     }
 
-    public function testGetDataWithTokenParameter(): void
+    public function testGetDataTakesTheReturnRedirectOrderIdAsTransactionReference(): void
     {
-        // PayPal passes the order ID as 'token' query parameter on callback redirect
-        $this->request->setToken('ORDER_FROM_REDIRECT');
+        // PayPal returns the buyer with ?token=<order id>; Gateway::completePurchase() hands that
+        // order id to the request as its transactionReference, never as the OAuth token.
+        $this->request->setTransactionReference('ORDER_FROM_REDIRECT');
         $data = $this->request->getData();
 
         $this->assertSame('ORDER_FROM_REDIRECT', $data['order_id']);
     }
 
-    public function testTransactionReferenceTakesPriorityOverToken(): void
+    public function testOrderIdComesFromTransactionReferenceNotTheOAuthToken(): void
     {
         $this->request->setTransactionReference('EXPLICIT_ORDER');
-        $this->request->setToken('TOKEN_ORDER');
+        $this->request->setToken('OAUTH_TOKEN');
         $data = $this->request->getData();
 
         $this->assertSame('EXPLICIT_ORDER', $data['order_id']);
     }
 
-    public function testMissingOrderIdThrowsException(): void
+    public function testMissingTransactionReferenceThrowsEvenWithTheOAuthTokenSet(): void
     {
-        // Clear token so neither transactionReference nor token is available
-        $this->request->setToken('');
+        // setUp() sets the gateway's OAuth token; it is never an order id.
         $this->expectException(InvalidRequestException::class);
-        $this->expectExceptionMessage('PayPal order ID is required');
+        $this->expectExceptionMessage('PayPal order ID is required as transactionReference');
         $this->request->getData();
+    }
+
+    public function testCompletePurchaseWithoutTransactionReferenceSendsNoRequest(): void
+    {
+        $this->setMockHttpResponse('CaptureSuccess.txt');
+
+        try {
+            $this->request->send();
+            $this->fail('completePurchase() without a transactionReference must throw');
+        } catch (InvalidRequestException $e) {
+            $this->assertStringContainsString('transactionReference', $e->getMessage());
+        }
+
+        $this->assertCount(0, $this->getMockClient()->getRequests());
     }
 
     public function testSandboxEndpoint(): void
