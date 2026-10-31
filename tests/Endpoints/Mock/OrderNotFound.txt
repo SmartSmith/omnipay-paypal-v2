@@ -1,0 +1,13 @@
+HTTP/1.1 404 Not Found
+Content-Type: application/json
+
+{
+  "name": "RESOURCE_NOT_FOUND",
+  "message": "The specified resource does not exist.",
+  "details": [
+    {
+      "issue": "INVALID_RESOURCE_ID",
+      "description": "Specified resource ID does not exist. Please check the resource ID and try again."
+    }
+  ]
+}

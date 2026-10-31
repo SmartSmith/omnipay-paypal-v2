@@ -1,0 +1,17 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "5O190127TN364715T",
+  "intent": "CAPTURE",
+  "status": "APPROVED",
+  "purchase_units": [
+    {
+      "reference_id": "TXN_001",
+      "amount": {
+        "currency_code": "USD",
+        "value": "100.00"
+      }
+    }
+  ]
+}

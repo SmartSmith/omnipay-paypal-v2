@@ -5,6 +5,7 @@ namespace Omnipay\PayPalV2;
 use Omnipay\Common\AbstractGateway;
 use Omnipay\Common\Exception\InvalidRequestException;
 use Omnipay\PayPalV2\Message\CompletePurchaseRequest;
+use Omnipay\PayPalV2\Message\FetchOrderRequest;
 use Omnipay\PayPalV2\Message\Payout\PayoutRequest;
 use Omnipay\PayPalV2\Message\Payout\PayoutStatusRequest;
 use Omnipay\PayPalV2\Message\PurchaseRequest;
@@ -128,6 +129,15 @@ class Gateway extends AbstractGateway
         }
 
         return $this->createRequest(CompletePurchaseRequest::class, $parameters);
+    }
+
+    /**
+     * Read an order without capturing it: a GET of /v2/checkout/orders/{transactionReference}. A
+     * status check uses this, never completePurchase(), which takes the money.
+     */
+    public function fetchOrder(array $parameters = []): FetchOrderRequest
+    {
+        return $this->createRequest(FetchOrderRequest::class, $parameters);
     }
 
     // -- Payout operations --
