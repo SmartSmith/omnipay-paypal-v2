@@ -10,7 +10,7 @@ class CompletePurchaseRequestTest extends TestCase
 {
     private CompletePurchaseRequest $request;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
         $this->request = new CompletePurchaseRequest($this->getHttpClient(), $this->getHttpRequest());
@@ -22,7 +22,7 @@ class CompletePurchaseRequestTest extends TestCase
         ]);
     }
 
-    public function testGetDataWithTransactionReference(): void
+    public function test_get_data_with_transaction_reference(): void
     {
         $this->request->setTransactionReference('ORDER_123');
         $data = $this->request->getData();
@@ -30,7 +30,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('ORDER_123', $data['order_id']);
     }
 
-    public function testGetDataTakesTheReturnRedirectOrderIdAsTransactionReference(): void
+    public function test_get_data_takes_the_return_redirect_order_id_as_transaction_reference(): void
     {
         // PayPal returns the buyer with ?token=<order id>; Gateway::completePurchase() hands that
         // order id to the request as its transactionReference, never as the OAuth token.
@@ -40,7 +40,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('ORDER_FROM_REDIRECT', $data['order_id']);
     }
 
-    public function testOrderIdComesFromTransactionReferenceNotTheOAuthToken(): void
+    public function test_order_id_comes_from_transaction_reference_not_the_oauth_token(): void
     {
         $this->request->setTransactionReference('EXPLICIT_ORDER');
         $this->request->setToken('OAUTH_TOKEN');
@@ -49,7 +49,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('EXPLICIT_ORDER', $data['order_id']);
     }
 
-    public function testMissingTransactionReferenceThrowsEvenWithTheOAuthTokenSet(): void
+    public function test_missing_transaction_reference_throws_even_with_the_oauth_token_set(): void
     {
         // setUp() sets the gateway's OAuth token; it is never an order id.
         $this->expectException(InvalidRequestException::class);
@@ -57,7 +57,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->request->getData();
     }
 
-    public function testCompletePurchaseWithoutTransactionReferenceSendsNoRequest(): void
+    public function test_complete_purchase_without_transaction_reference_sends_no_request(): void
     {
         $this->setMockHttpResponse('CaptureSuccess.txt');
 
@@ -71,7 +71,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertCount(0, $this->getMockClient()->getRequests());
     }
 
-    public function testSandboxEndpoint(): void
+    public function test_sandbox_endpoint(): void
     {
         $this->request->setTransactionReference('ORDER_123');
         $this->setMockHttpResponse('CaptureSuccess.txt');
@@ -83,7 +83,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertStringContainsString('/v2/checkout/orders/ORDER_123/capture', $uri);
     }
 
-    public function testProductionEndpoint(): void
+    public function test_production_endpoint(): void
     {
         $this->request->setTestMode(false);
         $this->request->setTransactionReference('ORDER_123');
@@ -96,7 +96,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertStringNotContainsString('sandbox', $uri);
     }
 
-    public function testAuthHeadersIncluded(): void
+    public function test_auth_headers_included(): void
     {
         $this->request->setTransactionReference('ORDER_123');
         $this->setMockHttpResponse('CaptureSuccess.txt');
@@ -107,7 +107,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('application/json', $lastRequest->getHeaderLine('Content-Type'));
     }
 
-    public function testRequestMethodIsPost(): void
+    public function test_request_method_is_post(): void
     {
         $this->request->setTransactionReference('ORDER_123');
         $this->setMockHttpResponse('CaptureSuccess.txt');
@@ -117,7 +117,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('POST', $lastRequest->getMethod());
     }
 
-    public function testRequestBodyIsEmptyJson(): void
+    public function test_request_body_is_empty_json(): void
     {
         $this->request->setTransactionReference('ORDER_123');
         $this->setMockHttpResponse('CaptureSuccess.txt');
@@ -127,7 +127,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('{}', (string) $lastRequest->getBody());
     }
 
-    public function testOrderIdIsUrlEncoded(): void
+    public function test_order_id_is_url_encoded(): void
     {
         $this->request->setTransactionReference('ORDER WITH SPACES');
         $this->setMockHttpResponse('CaptureSuccess.txt');
@@ -139,7 +139,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertStringNotContainsString('ORDER WITH SPACES', $uri);
     }
 
-    public function testSuccessfulCaptureResponse(): void
+    public function test_successful_capture_response(): void
     {
         $this->request->setTransactionReference('5O190127TN364715T');
         $this->setMockHttpResponse('CaptureSuccess.txt');
@@ -153,7 +153,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('COMPLETED', $response->getCaptureStatus());
     }
 
-    public function testApprovedButNotCapturedResponse(): void
+    public function test_approved_but_not_captured_response(): void
     {
         $this->request->setTransactionReference('5O190127TN364715T');
         $this->setMockHttpResponse('CaptureApproved.txt');
@@ -164,7 +164,7 @@ class CompletePurchaseRequestTest extends TestCase
         $this->assertSame('APPROVED', $response->getOrderStatus());
     }
 
-    public function testCaptureErrorResponse(): void
+    public function test_capture_error_response(): void
     {
         $this->request->setTransactionReference('5O190127TN364715T');
         $this->setMockHttpResponse('CaptureError.txt');
