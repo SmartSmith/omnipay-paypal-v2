@@ -3,11 +3,11 @@
 #
 # Tiers. git hands the hook one line per pushed ref on stdin:
 # <local ref> <local sha> <remote ref> <remote sha>. A push naming main is a landing: the static
-# checks (composer check:static, Pint over the change), then php-standards' test-changed from the
-# remote's old sha (the merge-base with origin/main for a branch new there). Any other push is a
-# topic push and runs composer check:topic: Pint over the change and the hook's self-test, and no
-# test of the package. BANALO_FULL_CHECK=1 makes any push take the landing tier against origin/main.
-# Every pushed ref chooses; the strongest tier runs once.
+# check (php-standards' check-topic: Pint over the change), then php-standards' test-changed in a
+# gate slot, both from the remote's old sha (the merge-base with origin/main for a branch new
+# there). Any other push is a topic push and runs composer check:topic: Pint over the change and the
+# hook's self-test, and no test of the package. BANALO_FULL_CHECK=1 makes any push take the landing
+# tier against origin/main. Every pushed ref chooses; the strongest tier runs once.
 # Tests: .githooks/test-pre-push (composer test:hook).
 set -eu
 die() { echo "pre-push: $*; push refused" >&2; exit 2; }
@@ -43,18 +43,20 @@ done
 [ "$seen" = 1 ] || exit 0
 export CHECK_ONCE_REV="$checked_revision"
 if [ "$full" = 1 ]; then
-    # The owner's ruling of 24 Oct 2026: "only for functionality that an ai agent work on, the related
-    # tests run along with end to end tests. Nothing else. So even that should take overall less than a
-    # minute". A landing runs the static checks, then the change's related tests and the end-to-end
-    # suite (composer test:endpoints); `composer test`, the whole old suite, runs only in the nightly
-    # report, never on a push.
+    # The owner's gate of 31 Oct 2026: "A landing gate is the same run: static checks on the changed
+    # files, then that one test run." check-topic runs check:static's Pint on the files main gains,
+    # never the whole tree; test-changed then runs the change's related tests and the end-to-end suite
+    # (composer test:endpoints) in a gate slot of its own. `composer test`, the whole old suite, runs
+    # only in the nightly report, never on a push.
+    topic_checker=vendor/smartsmith/php-standards/bin/check-topic
     tester=vendor/smartsmith/php-standards/bin/test-changed
+    [ -x "$topic_checker" ] || die "$topic_checker is missing; run composer update smartsmith/php-standards first"
     [ -x "$tester" ] || die "$tester is missing; run composer update smartsmith/php-standards first"
     if [ -z "$land_base" ]; then
         land_base=$(git merge-base "$checked_revision" refs/remotes/origin/main) || die 'cannot resolve branch base'
     fi
-    "$checker" fast -- composer check:static
-    "$tester" --base "$land_base"
+    "$checker" fast -- "$topic_checker" --base "$land_base" --without lint --without phpstan
+    "$checker" slot -- "$tester" --base "$land_base"
 else
     "$checker" fast -- composer check:topic
 fi

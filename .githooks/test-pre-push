@@ -1,9 +1,9 @@
 #!/bin/sh
-# Tests for .githooks/pre-push's tiers (PHSTD-361). A scratch repository holds stubs of check-once,
-# test-changed and composer that record what the hook runs, so no check runs. Run it whole:
-# composer test:hook. PHSTD_HOOK_UNDER_TEST names another hook to hold to the same cases (an empty
-# one stands for the repository before PHSTD-361, which had no hook, to watch the landing cases go
-# red).
+# Tests for .githooks/pre-push's tiers (PHSTD-361, PHSTD-451). A scratch repository holds stubs of
+# check-once, check-topic, test-changed and composer that record what the hook runs, so no check
+# runs. Run it whole: composer test:hook. PHSTD_HOOK_UNDER_TEST names another hook to hold to the
+# same cases (an empty one stands for the repository before PHSTD-361, which had no hook, to watch
+# the landing cases go red).
 set -eu
 unset CHECK_ONCE_REV GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR BANALO_FULL_CHECK MADEPIECE_FULL_CHECK KEEL_FULL_CHECK
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -23,6 +23,11 @@ printf 'check-once %s\n' "$1" >> "$PROOF_COMMANDS"
 shift 2
 exec "$@"
 STUB
+cat > "$tmp/stubs/check-topic" <<'STUB'
+#!/bin/sh
+printf 'check-topic %s\n' "$*" >> "$PROOF_COMMANDS"
+[ "${CHECK_TOPIC_FAILS+x}" != x ]
+STUB
 cat > "$tmp/stubs/test-changed" <<'STUB'
 #!/bin/sh
 printf 'test-changed %s\n' "$*" >> "$PROOF_COMMANDS"
@@ -30,7 +35,7 @@ printf 'test-changed %s\n' "$*" >> "$PROOF_COMMANDS"
 STUB
 chmod +x "$tmp/stubs/"*
 bin="$tmp/repo/vendor/smartsmith/php-standards/bin"
-cp "$tmp/stubs/check-once" "$tmp/stubs/test-changed" "$bin/"
+cp "$tmp/stubs/check-once" "$tmp/stubs/check-topic" "$tmp/stubs/test-changed" "$bin/"
 export PATH="$tmp/stubs:$PATH" PROOF_COMMANDS="$tmp/commands"
 cd "$tmp/repo"
 git init -q
@@ -100,9 +105,11 @@ refuses() {
 
 topic="check-once fast
 composer check:topic"
-# landing <base>: what a landing runs, the static checks then the related and end-to-end tests.
+# landing <base>: what a landing runs, the owner's gate of 31 Oct 2026 ("static checks on the changed
+# files, then that one test run"): check-topic's Pint on the files changed since <base>, then the
+# related and end-to-end tests from <base> in check-once's slot tier.
 landing() {
-    printf 'check-once fast\ncomposer check:static\ntest-changed --base %s' "$1"
+    printf 'check-once fast\ncheck-topic --base %s --without lint --without phpstan\ncheck-once slot\ntest-changed --base %s' "$1" "$1"
 }
 
 printf 'refs/heads/x %s refs/heads/phstd/361-topic %s\n' "$sha" "$old" > "$tmp/topic"
@@ -115,7 +122,7 @@ printf 'refs/heads/x %s refs/heads/maintenance %s\n' "$sha" "$zero" > "$tmp/pref
 expect 'a branch merely starting with main is a topic push' "$tmp/prefix" "$topic"
 
 printf 'refs/heads/x %s refs/heads/main %s\n' "$sha" "$old" > "$tmp/main"
-expect 'a main push runs check:static then test-changed from the remote old sha' "$tmp/main" "$(landing "$old")"
+expect 'a main push runs check-topic then test-changed in a gate slot from the remote old sha' "$tmp/main" "$(landing "$old")"
 
 printf 'refs/heads/x %s refs/heads/test %s\n' "$sha" "$old" > "$tmp/test"
 expect 'a test push is a topic push: main is the only target' "$tmp/test" "$topic"
@@ -145,9 +152,12 @@ printf 'refs/heads/x %s refs/heads/main %s\n' "$old" "$base" > "$tmp/elsewhere"
 refuses 'a pushed tree that is not the checked-out tree refuses' "$tmp/elsewhere" 2 'check out refs/heads/x before pushing' ''
 
 refuses 'a red check:topic refuses the push' "$tmp/topic" 1 '' "$topic" COMPOSER_FAILS=check:topic
-refuses 'a red check:static refuses the landing before any test' "$tmp/main" 1 '' 'check-once fast
-composer check:static' COMPOSER_FAILS=check:static
+refuses 'a red check-topic refuses the landing before any test' "$tmp/main" 1 '' "$(printf 'check-once fast\ncheck-topic --base %s --without lint --without phpstan' "$old")" CHECK_TOPIC_FAILS=1
 refuses 'a red related or end-to-end test refuses the landing' "$tmp/main" 1 '' "$(landing "$old")" RELATED_TESTS_FAIL=1
+
+mv "$bin/check-topic" "$tmp/check-topic.away"
+refuses 'a landing with no check-topic refuses' "$tmp/main" 2 'check-topic is missing; run composer update smartsmith/php-standards first' ''
+mv "$tmp/check-topic.away" "$bin/check-topic"
 
 mv "$bin/test-changed" "$tmp/test-changed.away"
 refuses 'a landing with no test-changed refuses' "$tmp/main" 2 'test-changed is missing; run composer update smartsmith/php-standards first' ''
