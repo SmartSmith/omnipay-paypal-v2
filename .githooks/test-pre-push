@@ -148,6 +148,23 @@ expect 'a deleted ref runs nothing' "$tmp/delete" ''
 : > "$tmp/empty"
 expect 'a push with no ref runs nothing' "$tmp/empty" ''
 
+# D8125 (the owner, 1 Nov 2026): "a push that only deletes branches passes". Two delete lines pass at
+# once, said in one line, where no check-once can be found: outside any work tree, so no vendor/, and
+# nothing stubbed on PATH.
+mkdir "$tmp/outside"
+printf '(delete) %s refs/heads/one %s\n(delete) %s refs/heads/two %s\n' "$zero" "$old" "$zero" "$base" > "$tmp/delete-only"
+: > "$PROOF_COMMANDS"
+status=0
+(cd "$tmp/outside" && env PATH=/usr/bin:/bin GIT_CEILING_DIRECTORIES="$tmp" "$hook" origin git@example.invalid:x.git < "$tmp/delete-only") > "$tmp/out" 2>&1 || status=$?
+if [ "$status" = 0 ] && [ "$(cat "$tmp/out")" = 'pre-push: delete-only push (2 ref(s)); no gate runs (D8125)' ] && [ ! -s "$PROOF_COMMANDS" ]; then
+    pass 'a delete-only push passes with no check-once to be found'
+else
+    fail 'a delete-only push passes with no check-once to be found' "the hook exited $status, said '$(cat "$tmp/out")', ran '$(cat "$PROOF_COMMANDS")'"
+fi
+
+printf '(delete) %s refs/heads/old %s\nrefs/heads/x %s refs/heads/main %s\n' "$zero" "$base" "$sha" "$old" > "$tmp/delete-and-main"
+expect 'a push that deletes a branch and lands on main runs the landing' "$tmp/delete-and-main" "$(landing "$old")"
+
 printf 'refs/heads/x %s refs/heads/main %s\n' "$old" "$base" > "$tmp/elsewhere"
 refuses 'a pushed tree that is not the checked-out tree refuses' "$tmp/elsewhere" 2 'check out refs/heads/x before pushing' ''
 

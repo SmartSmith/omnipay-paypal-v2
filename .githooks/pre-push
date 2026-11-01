@@ -10,12 +10,30 @@
 # tier against origin/main. Every pushed ref chooses; the strongest tier runs once.
 # Tests: .githooks/test-pre-push (composer test:hook).
 set -eu
+# D8125 (the owner, 1 Nov 2026): "a push that only deletes branches passes". Every ref line is read
+# first, before any tool, so a push whose every line deletes a ref (local sha all zeros) exits 0 here
+# with no gate, even with no vendor/ and outside a work tree. Any other push reads the same lines
+# below and is gated as before; a delete line never gates on its own.
+zero=0000000000000000000000000000000000000000
+ref_lines=$(cat)
+ref_count=0
+delete_count=0
+while read -r _ ref_sha _ _; do
+    [ -n "$ref_sha" ] || continue
+    ref_count=$((ref_count + 1))
+    [ "$ref_sha" != "$zero" ] || delete_count=$((delete_count + 1))
+done <<EOF
+$ref_lines
+EOF
+if [ "$ref_count" -gt 0 ] && [ "$delete_count" = "$ref_count" ]; then
+    echo "pre-push: delete-only push ($ref_count ref(s)); no gate runs (D8125)" >&2
+    exit 0
+fi
 die() { echo "pre-push: $*; push refused" >&2; exit 2; }
 cd "$(git rev-parse --show-toplevel)"
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
 checker=vendor/smartsmith/php-standards/bin/check-once
 [ -x "$checker" ] || die "$checker is missing; run composer update smartsmith/php-standards first"
-zero=0000000000000000000000000000000000000000
 full=0
 seen=0
 land_base=''
@@ -26,6 +44,10 @@ fi
 # The old names fail loud rather than quietly running the topic tier.
 [ "${MADEPIECE_FULL_CHECK+x}" != x ] || die 'MADEPIECE_FULL_CHECK is now BANALO_FULL_CHECK'
 [ "${KEEL_FULL_CHECK+x}" != x ] || die 'KEEL_FULL_CHECK is now BANALO_FULL_CHECK'
+# The ref lines read above, given back to the loop as git gave them.
+[ -z "$ref_lines" ] || exec <<EOF
+$ref_lines
+EOF
 while read -r local_ref revision remote_ref base; do
     # A deleted ref pushes nothing to check.
     [ "$revision" != "$zero" ] || continue
